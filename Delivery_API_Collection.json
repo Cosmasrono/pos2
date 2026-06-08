@@ -1,0 +1,449 @@
+{
+  "info": {
+    "_postman_id": "delivery-api-collection",
+    "name": "POS Delivery System API",
+    "description": "Complete API collection for delivery system integration with POS",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"delivery-system\",\n  \"client_secret\": \"Pt7kN9mQ2vR5xW3jB6dZ1cF4gT8sM2hL\"\n}"
+            },
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/login",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "login"
+              ]
+            },
+            "description": "Get Bearer Token for authentication"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders - Get",
+      "item": [
+        {
+          "name": "Get All Pending Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/orders",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "orders"
+              ]
+            },
+            "description": "Fetch all orders ready for delivery"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/orders/1",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "orders",
+                "1"
+              ]
+            },
+            "description": "Get detailed information for a specific order including items"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Customer Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/orders/1/customer",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "orders",
+                "1",
+                "customer"
+              ]
+            },
+            "description": "Get customer delivery address and contact info"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders - Update Status",
+      "item": [
+        {
+          "name": "Mark as Picked Up",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/orders/1/picked-up",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "orders",
+                "1",
+                "picked-up"
+              ]
+            },
+            "description": "Mark order as picked up from store"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark as In Transit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delivery_status\": \"in_transit\",\n  \"delivery_notes\": \"On the way\"\n}"
+            },
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/orders/1/status",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "orders",
+                "1",
+                "status"
+              ]
+            },
+            "description": "Update order status to in_transit"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark as Delivered",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delivery_notes\": \"Delivered successfully\",\n  \"delivery_proof\": \"base64_image_data_here\"\n}"
+            },
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/orders/1/delivered",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "orders",
+                "1",
+                "delivered"
+              ]
+            },
+            "description": "Mark order as delivered with optional proof image"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Delivery as Failed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"failure_reason\": \"Customer not available\"\n}"
+            },
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/orders/1/failed",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "orders",
+                "1",
+                "failed"
+              ]
+            },
+            "description": "Mark delivery as failed with reason"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "Get All Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/inventory",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "inventory"
+              ]
+            },
+            "description": "Get all available products and stock levels"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Low Stock Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/inventory?low_stock=1",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "low_stock",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Get only products with low stock (below reorder level)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Statistics",
+      "item": [
+        {
+          "name": "Get Delivery Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://127.0.0.1:8000/api/delivery/stats",
+              "protocol": "http",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "api",
+                "delivery",
+                "stats"
+              ]
+            },
+            "description": "Get delivery statistics (total, pending, delivered, failed, etc.)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "token",
+      "value": "",
+      "description": "Bearer token from login endpoint"
+    }
+  ]
+}
