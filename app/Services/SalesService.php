@@ -21,6 +21,29 @@ class SalesService
             $branchId = $mainBranch?->id;
         }
 
+        // Block expired stock from being sold. Checked up front (before any record is
+        // created) and only when expired batches actually exist for the item — so
+        // untracked stock is never falsely blocked.
+        if ($branchId) {
+            foreach ($data['items'] as $item) {
+                $expiredQty = \App\Models\ProductBatch::where('product_id', $item['product_id'])
+                    ->where('branch_id', $branchId)
+                    ->expired()
+                    ->sum('quantity');
+
+                if ($expiredQty > 0) {
+                    $sellable = \App\Models\ProductBatch::sellableQuantity($item['product_id'], $branchId);
+                    if ($item['quantity'] > $sellable) {
+                        $name = Product::find($item['product_id'])?->name ?? 'item';
+                        throw new \Exception(
+                            "Cannot sell {$item['quantity']} × {$name}: only {$sellable} non-expired unit(s) available "
+                            . "({$expiredQty} expired and blocked from sale)."
+                        );
+                    }
+                }
+            }
+        }
+
         $sale = Sale::create([
             'receipt_number' => $this->generateReceiptNumber(),
             'cashier_id' => $data['cashier_id'],
@@ -67,6 +90,9 @@ class SalesService
                     $branchStock->quantity_in_stock -= $item['quantity'];
                     $branchStock->save();
                 }
+
+                // Keep the expiry ledger in sync: draw down batches earliest-expiry-first.
+                \App\Models\ProductBatch::deductFefo($item['product_id'], $branchId, (int) $item['quantity']);
             }
 
             // Reduce total inventory

@@ -707,6 +707,13 @@
 
                 {{-- ── EVERYONE ── --}}
                 <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}"
+                       href="{{ route('dashboard') }}">
+                        <i class="bi bi-speedometer2 nav-icon"></i> Dashboard
+                    </a>
+                </div>
+
+                <div class="nav-item">
                     <a class="nav-link {{ request()->routeIs('sales.create') || request()->routeIs('sales.pos') ? 'active' : '' }}"
                        href="{{ route('sales.create') }}">
                         <i class="bi bi-bag-check nav-icon"></i> Sell
@@ -729,7 +736,7 @@
                 <div class="nav-divider"></div>
 
                 <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('products.*') && !request()->routeIs('stock.*') && !request()->routeIs('categories.*') ? 'active' : '' }}"
+                    <a class="nav-link {{ request()->routeIs('products.*') && !request()->routeIs('products.expiry') && !request()->routeIs('stock.*') && !request()->routeIs('categories.*') ? 'active' : '' }}"
                        href="{{ route('products.index') }}">
                         <i class="bi bi-box-seam nav-icon"></i> Products
                     </a>
@@ -739,6 +746,16 @@
                     <a class="nav-link {{ request()->routeIs('stock.*') ? 'active' : '' }}"
                        href="{{ route('stock.receive') }}">
                         <i class="bi bi-box-arrow-in-down nav-icon"></i> Receive Delivery
+                    </a>
+                </div>
+
+                <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('products.expiry') ? 'active' : '' }}"
+                       href="{{ route('products.expiry') }}">
+                        <i class="bi bi-calendar-x nav-icon"></i> Expiry Tracking
+                        @if(!empty($expiryAlertCount) && $expiryAlertCount > 0)
+                            <span class="nav-pending-dot ms-auto" style="display:inline-flex; background: var(--danger, #dc3545);">{{ $expiryAlertCount }}</span>
+                        @endif
                     </a>
                 </div>
 
@@ -770,13 +787,6 @@
 
                 {{-- Settings — always visible --}}
                 <div class="nav-section-label mt-2">Settings</div>
-
-                <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}"
-                       href="{{ route('dashboard') }}">
-                        <i class="bi bi-speedometer2 nav-icon"></i> Dashboard
-                    </a>
-                </div>
 
                 <div class="nav-item">
                     <a class="nav-link {{ request()->routeIs('stock-transfers.*') ? 'active' : '' }}"

@@ -35,12 +35,15 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/superadmin/inventory', [App\Http\Controllers\DashboardController::class, 'superAdminInventory'])->name('superadmin.inventory');
 
     // Product and Inventory Management (Restricted for Cashiers)
+    // Must be before the products resource so it isn't caught by products/{product}.
+    Route::get('products/expiry', [ProductController::class, 'expiryReport'])->name('products.expiry');
     Route::resource('products', ProductController::class);
     Route::resource('stock-transfers', StockTransferController::class);
     Route::post('products/add-stock', [ProductController::class, 'addStock'])->name('stock.add');
     Route::get('stock/receive', [ProductController::class, 'receiveDelivery'])->name('stock.receive');
     Route::post('stock/receive', [ProductController::class, 'processDelivery'])->name('stock.receive.process');
     Route::post('products/{product}/batch-transfer', [ProductController::class, 'batchTransfer'])->name('products.batch-transfer');
+    Route::post('categories/quick', [CategoryController::class, 'quickStore'])->name('categories.quick-store');
     Route::resource('categories', CategoryController::class);
     Route::resource('suppliers', SupplierController::class);
     Route::resource('purchase-orders', PurchaseOrderController::class);

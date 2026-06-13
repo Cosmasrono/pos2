@@ -12,9 +12,9 @@
                 <h6 class="m-0 fw-bold text-primary">Product Categories</h6>
                 <small class="text-muted">Group your products so they are easy to find.</small>
             </div>
-            <a href="{{ route('categories.create') }}" class="btn btn-primary btn-sm">
+            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
                 <i class="bi bi-plus-circle me-1"></i> Add New Category
-            </a>
+            </button>
         </div>
         <div class="card-body">
             <div class="table-responsive">
@@ -68,9 +68,9 @@
                                         <i class="bi bi-tags fs-1 text-muted opacity-25 d-block mb-3"></i>
                                         <h6 class="text-muted">No categories yet</h6>
                                         <p class="text-muted small mb-3">Categories help you organise products — for example: <em>Medicines</em>, <em>Food</em>, <em>Electronics</em>.</p>
-                                        <a href="{{ route('categories.create') }}" class="btn btn-primary">
+                                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
                                             <i class="bi bi-plus-circle me-1"></i> Add Your First Category
-                                        </a>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -79,6 +79,41 @@
                 </table>
             </div>
             <div class="mt-3">{{ $categories->links() }}</div>
+        </div>
+    </div>
+</div>
+
+{{-- Add Category Modal --}}
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form action="{{ route('categories.store') }}" method="POST">
+                @csrf
+                <div class="modal-header">
+                    <h5 class="modal-title text-primary"><i class="bi bi-plus-circle me-2"></i>Add New Category</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="add_name" class="form-label fw-bold">Category Name <span class="text-danger">*</span></label>
+                        <input type="text" id="add_name" name="name"
+                               class="form-control @error('name') is-invalid @enderror"
+                               value="{{ old('name') }}" placeholder="e.g. Medicines, Food, Electronics" required>
+                        @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="mb-1">
+                        <label for="add_description" class="form-label fw-bold">Description <span class="text-muted small">(optional)</span></label>
+                        <textarea id="add_description" name="description" rows="2"
+                                  class="form-control @error('description') is-invalid @enderror"
+                                  placeholder="What goes in this category?">{{ old('description') }}</textarea>
+                        @error('description')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save Category</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -111,13 +146,21 @@
     </div>
 </div>
 
-@section('scripts')
+@endsection
+
+@push('scripts')
 <script>
 function confirmDelete(name, url) {
     document.getElementById('deleteCategoryName').textContent = name;
     document.getElementById('deleteForm').action = url;
     new bootstrap.Modal(document.getElementById('deleteModal')).show();
 }
+
+// Re-open the Add modal if the server rejected the form (e.g. duplicate name).
+@if($errors->any() && old('name') !== null)
+    document.addEventListener('DOMContentLoaded', () => {
+        new bootstrap.Modal(document.getElementById('addCategoryModal')).show();
+    });
+@endif
 </script>
-@endsection
-@endsection
+@endpush

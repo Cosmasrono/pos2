@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 use App\Models\ProductBranchStock;
+use App\Models\ProductBatch;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\Branch;
@@ -63,7 +64,12 @@ public function store(Request $request): RedirectResponse
         'total_stock'             => 'nullable|integer|min:0',
         'branch_quantities'       => 'nullable|array',
         'branch_quantities.*'     => 'nullable|integer|min:0',
+        'expiry_date'             => 'nullable|date',
     ]);
+
+    // Pull expiry out — it belongs on the stock batch, not the products table.
+    $expiryDate = $validated['expiry_date'] ?? null;
+    unset($validated['expiry_date']);
 
     $validated['cost_price'] ??= 0;
 
@@ -107,6 +113,17 @@ public function store(Request $request): RedirectResponse
                 'branch_id'          => (int) $branchId,
                 'quantity_in_stock'  => $qty,
                 'initial_allocation' => $qty,
+            ]);
+
+            // Seed the expiry ledger with an initial batch (expiry optional).
+            \App\Models\ProductBatch::create([
+                'product_id'   => $product->id,
+                'branch_id'    => (int) $branchId,
+                'batch_number' => 'INITIAL',
+                'expiry_date'  => $expiryDate,
+                'quantity'     => $qty,
+                'cost_price'   => $product->cost_price,
+                'received_at'  => now(),
             ]);
         }
     }
@@ -224,6 +241,48 @@ public function store(Request $request): RedirectResponse
             ->with('success', 'Product deactivated successfully');
     }
 
+    /**
+     * Expiry tracking dashboard — expired stock and batches expiring soon.
+     */
+    public function expiryReport(Request $request): View
+    {
+        $user      = auth()->user();
+        $window    = (int) $request->get('window', 90);   // "expiring soon" horizon (days)
+        $today     = now()->startOfDay();
+
+        $base = ProductBatch::query()
+            ->with(['product:id,name,sku', 'branch:id,name'])
+            ->where('quantity', '>', 0)
+            ->whereNotNull('expiry_date');
+
+        // Branch users only see their own branch.
+        if ($user->branch_id) {
+            $base->where('branch_id', $user->branch_id);
+        }
+
+        $expired = (clone $base)
+            ->whereDate('expiry_date', '<', $today->toDateString())
+            ->orderBy('expiry_date')
+            ->get();
+
+        $expiringSoon = (clone $base)
+            ->whereDate('expiry_date', '>=', $today->toDateString())
+            ->whereDate('expiry_date', '<=', $today->copy()->addDays($window)->toDateString())
+            ->orderBy('expiry_date')
+            ->get();
+
+        $valueAtRisk = $expired->sum(fn ($b) => $b->quantity * (float) ($b->cost_price ?? 0));
+
+        return view('products.expiry', [
+            'expired'          => $expired,
+            'expiringSoon'     => $expiringSoon,
+            'window'           => $window,
+            'valueAtRisk'      => $valueAtRisk,
+            'expiredUnits'     => $expired->sum('quantity'),
+            'expiringUnits'    => $expiringSoon->sum('quantity'),
+        ]);
+    }
+
     public function addStock(Request $request): RedirectResponse
     {
         $validated = $request->validate([
@@ -240,6 +299,17 @@ public function store(Request $request): RedirectResponse
 
         $stock->increment('quantity_in_stock', $validated['quantity']);
         $stock->increment('initial_allocation', $validated['quantity']);
+
+        // Track as a batch so the expiry ledger stays in sync (expiry unknown here).
+        \App\Models\ProductBatch::create([
+            'product_id'   => $validated['product_id'],
+            'branch_id'    => $validated['branch_id'],
+            'batch_number' => $validated['reference'] ?? 'MANUAL',
+            'expiry_date'  => null,
+            'quantity'     => $validated['quantity'],
+            'cost_price'   => optional(Product::find($validated['product_id']))->cost_price,
+            'received_at'  => now(),
+        ]);
 
         // Log stock movement (assuming StockMovement model)
         if (class_exists('App\Models\StockMovement')) {
@@ -273,16 +343,22 @@ public function store(Request $request): RedirectResponse
     public function processDelivery(Request $request): RedirectResponse
     {
         $request->validate([
-            'branch_id'    => 'required|exists:branches,id',
-            'reference'    => 'nullable|string|max:255',
-            'quantities'   => 'required|array',
-            'quantities.*' => 'nullable|integer|min:0',
+            'branch_id'       => 'required|exists:branches,id',
+            'reference'       => 'nullable|string|max:255',
+            'quantities'      => 'required|array',
+            'quantities.*'    => 'nullable|integer|min:0',
+            'batch_number'    => 'nullable|array',
+            'batch_number.*'  => 'nullable|string|max:100',
+            'expiry_date'     => 'nullable|array',
+            'expiry_date.*'   => 'nullable|date',
         ]);
 
-        $branchId  = $request->branch_id;
-        $reference = $request->reference ?? 'Delivery received';
-        $userName  = auth()->user()->name;
-        $updated   = 0;
+        $branchId   = $request->branch_id;
+        $reference  = $request->reference ?? 'Delivery received';
+        $userName   = auth()->user()->name;
+        $batchInput = $request->input('batch_number', []);
+        $expiryInput= $request->input('expiry_date', []);
+        $updated    = 0;
 
         foreach ($request->quantities as $productId => $qty) {
             if (!$qty || $qty <= 0) continue;
@@ -296,6 +372,17 @@ public function store(Request $request): RedirectResponse
             );
             $stock->increment('quantity_in_stock', $qty);
             $stock->increment('initial_allocation', $qty);
+
+            // Track this delivery as a batch (expiry ledger).
+            \App\Models\ProductBatch::create([
+                'product_id'   => $productId,
+                'branch_id'    => $branchId,
+                'batch_number' => $batchInput[$productId] ?? null,
+                'expiry_date'  => $expiryInput[$productId] ?? null,
+                'quantity'     => $qty,
+                'cost_price'   => $product->cost_price,
+                'received_at'  => now(),
+            ]);
 
             // Update master quantity
             $product->quantity_in_stock = $product->branchStocks()->sum('quantity_in_stock');

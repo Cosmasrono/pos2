@@ -42,4 +42,9 @@ class Branch extends Model
     {
         return $this->hasMany(\App\Models\ProductBranchStock::class);
     }
+
+    public function batches()
+    {
+        return $this->hasMany(\App\Models\ProductBatch::class);
+    }
 }

@@ -72,6 +72,11 @@ class Product extends Model
         return $this->hasMany(ProductBranchStock::class);
     }
 
+    public function batches(): HasMany
+    {
+        return $this->hasMany(ProductBatch::class);
+    }
+
     // If you added branch_id to products (optional)
     public function branch()
     {

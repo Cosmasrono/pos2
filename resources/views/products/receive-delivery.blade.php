@@ -55,7 +55,9 @@
                             <th>Category</th>
                             <th class="text-center">Current Stock</th>
                             <th class="text-center">Reorder Level</th>
-                            <th style="width:160px;">Qty Received</th>
+                            <th style="width:120px;">Qty Received</th>
+                            <th style="width:140px;">Batch #</th>
+                            <th style="width:160px;">Expiry Date</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -89,7 +91,18 @@
                                     name="quantities[{{ $product->id }}]"
                                     class="form-control form-control-sm qty-input text-center"
                                     min="0" value="" placeholder="—"
-                                    style="width:120px;">
+                                    style="width:110px;">
+                            </td>
+                            <td>
+                                <input type="text"
+                                    name="batch_number[{{ $product->id }}]"
+                                    class="form-control form-control-sm"
+                                    placeholder="optional">
+                            </td>
+                            <td>
+                                <input type="date"
+                                    name="expiry_date[{{ $product->id }}]"
+                                    class="form-control form-control-sm">
                             </td>
                         </tr>
                         @endforeach

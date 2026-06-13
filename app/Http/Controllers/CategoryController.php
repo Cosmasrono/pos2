@@ -30,6 +30,25 @@ class CategoryController extends Controller
         return redirect()->route('categories.index')->with('success', 'Category created successfully.');
     }
 
+    /**
+     * Create a category from an inline modal (e.g. the product form) and return JSON
+     * so the page can add it to the dropdown without navigating away.
+     */
+    public function quickStore(Request $request)
+    {
+        $validated = $request->validate([
+            'name'        => ['required', 'string', 'max:255', 'unique:categories'],
+            'description' => ['nullable', 'string'],
+        ]);
+
+        $category = Category::create($validated);
+
+        return response()->json([
+            'id'   => $category->id,
+            'name' => $category->name,
+        ]);
+    }
+
     public function edit(Category $category)
     {
         return view('categories.edit', compact('category'));

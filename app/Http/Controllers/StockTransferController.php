@@ -138,6 +138,14 @@ if (!$targetBranchId) {
             // We increment initial_allocation too because it's a "new" allocation for this branch
             $targetStock->increment('initial_allocation', $validated['quantity']);
 
+            // Move batches (with their expiry dates) from source to destination.
+            \App\Models\ProductBatch::transferFefo(
+                $product->id,
+                (int) $validated['source_branch_id'],
+                (int) $targetBranchId,
+                (int) $validated['quantity']
+            );
+
             // Record Movements
  // Record Movements
 StockMovement::create([

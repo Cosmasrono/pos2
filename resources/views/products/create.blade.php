@@ -79,11 +79,13 @@
                                         @if($categories->isEmpty())
                                             <div class="form-text text-warning">
                                                 <i class="bi bi-exclamation-triangle me-1"></i>
-                                                No categories yet. <a href="{{ route('categories.create') }}" target="_blank">Create one first</a>.
+                                                No categories yet.
+                                                <a href="#" data-bs-toggle="modal" data-bs-target="#addCategoryModal">Create one</a>.
                                             </div>
                                         @else
                                             <div class="form-text">
-                                                Can't find your category? <a href="{{ route('categories.create') }}" target="_blank">Add a new one</a>.
+                                                Can't find your category?
+                                                <a href="#" data-bs-toggle="modal" data-bs-target="#addCategoryModal">Add a new one</a>.
                                             </div>
                                         @endif
                                     </div>
@@ -176,6 +178,18 @@
                                            value="{{ old('reorder_level', 10) }}" required min="0">
                                 </div>
                                 <div class="form-text">When the stock quantity drops to this number, you will see a <span class="badge bg-warning text-dark">Low Stock</span> warning. Default is 10.</div>
+
+                                <hr class="my-3">
+
+                                <label for="expiry_date" class="form-label fw-bold">
+                                    <i class="bi bi-calendar-x text-danger me-1"></i>Expiry Date <span class="text-muted small">(optional)</span>
+                                </label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light"><i class="bi bi-calendar-event"></i></span>
+                                    <input type="date" id="expiry_date" name="expiry_date" class="form-control"
+                                           value="{{ old('expiry_date') }}">
+                                </div>
+                                <div class="form-text">Applies to this initial stock. Expired stock is blocked from sale and shown in <strong>Expiry Tracking</strong>. Leave blank if not applicable.</div>
                             </div>
                         </div>
 
@@ -309,7 +323,102 @@
     }
 </style>
 
-@section('scripts')
+{{-- Add Category Modal (lives outside the product form to avoid nested forms) --}}
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-primary"><i class="bi bi-tags me-2"></i>Add New Category</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="addCategoryError" class="alert alert-danger d-none mb-3"></div>
+                <div class="mb-3">
+                    <label for="newCategoryName" class="form-label fw-bold">Category Name <span class="text-danger">*</span></label>
+                    <input type="text" id="newCategoryName" class="form-control" placeholder="e.g. Antibiotics, Painkillers">
+                </div>
+                <div class="mb-1">
+                    <label for="newCategoryDescription" class="form-label fw-bold">Description <span class="text-muted small">(optional)</span></label>
+                    <textarea id="newCategoryDescription" rows="2" class="form-control" placeholder="What goes in this category?"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveNewCategoryBtn">
+                    <i class="bi bi-check-lg me-1"></i>Save &amp; Select
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const saveBtn = document.getElementById('saveNewCategoryBtn');
+    if (!saveBtn) return;
+
+    const nameEl  = document.getElementById('newCategoryName');
+    const descEl  = document.getElementById('newCategoryDescription');
+    const errEl   = document.getElementById('addCategoryError');
+    const select  = document.getElementById('category_id');
+    const csrf    = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+    saveBtn.addEventListener('click', async () => {
+        const name = nameEl.value.trim();
+        errEl.classList.add('d-none');
+
+        if (!name) {
+            errEl.textContent = 'Please enter a category name.';
+            errEl.classList.remove('d-none');
+            return;
+        }
+
+        saveBtn.disabled = true;
+        try {
+            const res = await fetch('{{ route('categories.quick-store') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                },
+                body: JSON.stringify({ name, description: descEl.value.trim() || null }),
+            });
+
+            if (res.ok) {
+                const cat = await res.json();
+                // Add to dropdown, select it, and remove the "no categories" empty state.
+                const opt = new Option(cat.name, cat.id, true, true);
+                select.querySelectorAll('option[value=""]').forEach(o => { /* keep placeholder */ });
+                select.add(opt);
+                select.value = cat.id;
+
+                // Reset + close modal
+                nameEl.value = '';
+                descEl.value = '';
+                bootstrap.Modal.getInstance(document.getElementById('addCategoryModal'))?.hide();
+            } else if (res.status === 422) {
+                const data = await res.json();
+                const msg = data.errors?.name?.[0] ?? data.message ?? 'Could not save category.';
+                errEl.textContent = msg;
+                errEl.classList.remove('d-none');
+            } else {
+                errEl.textContent = 'Something went wrong. Please try again.';
+                errEl.classList.remove('d-none');
+            }
+        } catch (e) {
+            errEl.textContent = 'Network error. Please try again.';
+            errEl.classList.remove('d-none');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+});
+</script>
+@endpush
+
+@push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -437,5 +546,5 @@ document.addEventListener('DOMContentLoaded', () => {
 }
 .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
 </style>
-@endsection
+@endpush
 @endsection
