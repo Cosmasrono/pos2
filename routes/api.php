@@ -49,10 +49,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::prefix('sales')->group(function () {
         Route::post('/', [SalesController::class, 'store']);
-        Route::get('/{sale}', [SalesController::class, 'show']);
+        // {sale} must be numeric, otherwise paths like /api/sales/upsell or
+        // /api/sales/daily get swallowed as a sale id (→ "id = upsell" SQL error).
+        Route::get('/{sale}', [SalesController::class, 'show'])->whereNumber('sale');
         Route::get('/daily/{date?}', [SalesController::class, 'dailySales']);
         Route::get('/cashier/summary', [SalesController::class, 'cashierSales']);
-        Route::post('/{sale}/return', [SalesController::class, 'processReturn']);
+        Route::post('/{sale}/return', [SalesController::class, 'processReturn'])->whereNumber('sale');
         Route::post('/inventory/seed-test-data', [SalesController::class, 'seedTestData']);
     });
 

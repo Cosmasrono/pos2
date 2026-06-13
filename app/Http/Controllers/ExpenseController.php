@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Services\AIInventoryService;
 use App\Services\FinanceService;
 use Illuminate\Http\Request;
 
@@ -90,6 +91,16 @@ class ExpenseController extends Controller
 
         $expense->delete();
         return redirect()->route('expenses.index')->with('success', 'Expense deleted successfully.');
+    }
+
+    public function suggestCategory(Request $request, AIInventoryService $ai)
+    {
+        $request->validate(['description' => 'required|string', 'amount' => 'nullable|numeric']);
+        $suggestion = $ai->suggestExpenseCategory(
+            $request->description,
+            (float) ($request->amount ?? 0)
+        );
+        return response()->json(['category' => $suggestion]);
     }
 
     public function approve(Expense $expense)

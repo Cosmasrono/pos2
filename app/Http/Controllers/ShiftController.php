@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Shift;
 use App\Models\CartItem;
+use App\Services\AIInventoryService;
 use Illuminate\Http\Request;
 
 class ShiftController extends Controller
@@ -96,7 +97,36 @@ class ShiftController extends Controller
 
         $variance = $validated['closing_cash'] - $expectedClosing;
 
-        return back()->with('success', 'Shift closed. Variance: KES ' . number_format($variance, 2) . ' (' . ($variance >= 0 ? 'Over' : 'Short') . ')');
+        // AI shift summary
+        $topProduct = \Illuminate\Support\Facades\DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->join('products', 'sale_items.product_id', '=', 'products.id')
+            ->where('sales.shift_id', $shift->id)
+            ->select('products.name', \Illuminate\Support\Facades\DB::raw('SUM(sale_items.quantity) as qty'))
+            ->groupBy('products.id', 'products.name')
+            ->orderByDesc('qty')
+            ->first();
+
+        $openedAt  = \Carbon\Carbon::parse($shift->opened_at);
+        $closedAt  = now();
+        $duration  = round($openedAt->diffInMinutes($closedAt) / 60, 1);
+        $saleCount = $shift->sales()->count();
+
+        $aiSummary = app(AIInventoryService::class)->generateShiftSummary([
+            'cashier_name'   => auth()->user()->name,
+            'duration_hours' => $duration,
+            'total_sales'    => number_format($cashSales + $mpesaSales + $cardSales, 2),
+            'sale_count'     => $saleCount,
+            'cash_sales'     => number_format($cashSales, 2),
+            'mpesa_sales'    => number_format($mpesaSales, 2),
+            'variance'       => number_format(abs($variance), 2),
+            'variance_label' => $variance >= 0 ? 'overage' : 'shortage',
+            'top_product'    => $topProduct ? "{$topProduct->name} ({$topProduct->qty} units)" : 'None',
+        ]);
+
+        return back()
+            ->with('success', 'Shift closed. Variance: KES ' . number_format($variance, 2) . ' (' . ($variance >= 0 ? 'Over' : 'Short') . ')')
+            ->with('ai_shift_summary', $aiSummary);
     }
 
     /**

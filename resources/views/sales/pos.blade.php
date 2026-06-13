@@ -296,6 +296,17 @@
     </div>
 </div>
 
+<!-- Upsell Suggestion Toast -->
+<div class="position-fixed bottom-0 start-0 p-3" style="z-index: 1100; max-width: 340px;">
+    <div id="upsellToast" class="toast border-0 shadow-lg" role="alert" data-bs-autohide="false">
+        <div class="toast-header bg-primary text-white">
+            <strong class="me-auto">Customers also buy</strong>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body p-0" id="upsellBody"></div>
+    </div>
+</div>
+
 <!-- Trade-in Modal -->
 <div class="modal fade" id="tradeInModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -562,30 +573,40 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load state from DB and then products
     loadCartFromDB();
     
-    // 2. Sync Products to Local DB
+    // 2. Sync Products to Local DB. Returns how many products were cached.
     async function syncProductsWithLocal() {
-        if (!navigator.onLine) return;
-        
+        if (!navigator.onLine) return null;
+
         try {
-            const response = await fetch('{{ route("pos.products") }}');
+            const response = await fetch('{{ route("pos.products") }}', {
+                headers: { 'Accept': 'application/json' }
+            });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
             const products = await response.json();
             await db.products.clear();
-            await db.products.bulkAdd(products);
-            console.log('Local product cache updated');
+            if (products.length) await db.products.bulkPut(products);
+            console.log('Local product cache updated:', products.length);
+            return products.length;
         } catch (e) {
             console.error('Failed to sync products:', e);
+            return null; // signal sync failure so we fall back to whatever is cached
         }
     }
 
-    syncProductsWithLocal();
-    loadAllProducts();
+    // Sync first (when online), THEN render — otherwise we render an empty cache
+    // before the fetch has finished writing to it.
+    (async () => {
+        await syncProductsWithLocal();
+        await loadAllProducts();
+    })();
 
     async function loadAllProducts() {
         try {
             const products = await db.products.toArray();
             if (products.length > 0) {
-                searchResults.innerHTML = '<div class="alert alert-info py-2 small">Using offline cache. ' + products.length + ' products available.</div>';
                 displaySearchResults(products);
+            } else if (navigator.onLine) {
+                searchResults.innerHTML = '<div class="alert alert-warning">No products available for your branch. Add stock to this branch, then refresh.</div>';
             } else {
                 searchResults.innerHTML = '<div class="alert alert-warning">No products in local cache. Please go online to sync.</div>';
             }
@@ -667,7 +688,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 const quantity = parseInt(qtyInput.value) || 1;
                 
                 syncAddToCart(this.dataset.id, quantity);
-                
+                fetchUpsellSuggestions();
+
                 // Reset quantity but keep search results
                 qtyInput.value = '1';
                 // productSearch.value = ''; // Don't clear search
@@ -927,9 +949,40 @@ document.addEventListener('DOMContentLoaded', function() {
         const total = parseFloat(document.getElementById('totalInput').value) || 0;
         const paymentMethod = document.getElementById('paymentMethod').value;
 
-        // If Offline, Queue directly
+        // If Offline, save to the offline store and let the service worker sync it.
         if (!navigator.onLine) {
-            await queueOfflineSale(new FormData(this));
+            const fd       = new FormData(this);
+            const tendered = parseFloat(document.getElementById('amountTendered')?.value) || 0;
+
+            const payload = {
+                items:           cart.map(i => ({ id: i.id, quantity: i.quantity, price: i.price })),
+                customer_id:     fd.get('customer_id') || null,
+                payment_method:  paymentMethod,
+                tax_amount:      parseFloat(fd.get('tax_amount')) || 0,
+                total_amount:    total,
+                discount:        parseFloat(fd.get('discount')) || 0,
+                change_amount:   paymentMethod === 'cash' ? Math.max(0, tendered - total) : 0,
+                amount_tendered: tendered,
+                promotion_id:    fd.get('promotion_id') || null,
+                trade_ins:       tradeIns,
+                trade_in_amount: parseFloat(fd.get('trade_in_amount')) || 0,
+                notes:           fd.get('mpesa_phone') || null,
+            };
+
+            try {
+                const localId = await OfflinePOS.saveSale(payload);
+                await OfflinePOS.updateBadge();
+                await OfflinePOS.requestSync();
+
+                Swal.fire({
+                    title: 'Saved Offline',
+                    html: `Sale saved on this device (<strong>LOCAL-${localId}</strong>) and will sync automatically when you reconnect.`,
+                    icon: 'success'
+                });
+                syncClearCart();
+            } catch (err) {
+                Swal.fire({ title: 'Offline Save Failed', text: err.message, icon: 'error' });
+            }
             return;
         }
         
@@ -1074,6 +1127,55 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('amountTendered').value = document.getElementById('totalInput').value;
         document.getElementById('posForm').submit();
     });
+
+    // ── Upsell Suggestions ──────────────────────────────────────────────────
+    let upsellDebounce = null;
+
+    async function fetchUpsellSuggestions() {
+        if (!navigator.onLine || cart.length === 0) return;
+
+        clearTimeout(upsellDebounce);
+        upsellDebounce = setTimeout(async () => {
+            try {
+                const ids = cart.map(i => i.id);
+                const params = ids.map(id => `product_ids[]=${id}`).join('&');
+                const res  = await fetch(`/api/sales/upsell?${params}`);
+                const data = await res.json();
+
+                if (!data || data.length === 0) return;
+
+                let html = '<ul class="list-group list-group-flush">';
+                data.forEach(item => {
+                    html += `
+                        <li class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                            <div>
+                                <div class="fw-bold small">${item.name}</div>
+                                <div class="text-muted" style="font-size:0.75rem;">Bought together ${item.frequency}×</div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="text-primary fw-bold small">KES ${parseFloat(item.price).toLocaleString()}</span>
+                                <button type="button" class="btn btn-sm btn-primary py-0 px-2"
+                                        onclick="addUpsellItem(${item.id}, '${item.name.replace(/'/g, "\\'")}', ${item.price})">
+                                    + Add
+                                </button>
+                            </div>
+                        </li>`;
+                });
+                html += '</ul>';
+
+                document.getElementById('upsellBody').innerHTML = html;
+                const toast = new bootstrap.Toast(document.getElementById('upsellToast'));
+                toast.show();
+            } catch (e) {
+                // silently ignore — upsell is best-effort
+            }
+        }, 800);
+    }
+
+    window.addUpsellItem = async function(id, name, price) {
+        await syncAddToCart(id, 1);
+        bootstrap.Toast.getInstance(document.getElementById('upsellToast'))?.hide();
+    };
 });
 </script>
 @endpush

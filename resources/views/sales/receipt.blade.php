@@ -232,7 +232,10 @@
         </div>
 
         <div class="footer">
-            <p>Thank you for your purchase!</p>
+            @if(!empty($thankYouMessage))
+                <p style="font-style:italic; color:#444;">{{ $thankYouMessage }}</p>
+            @endif
+            <p>Thank you for shopping at Wing Store!</p>
             <p>Please keep this receipt for your records.</p>
         </div>
 

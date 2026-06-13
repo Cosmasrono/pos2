@@ -42,7 +42,7 @@
                         <select name="source_branch_id" id="source_branch_id" class="form-select @error('source_branch_id') is-invalid @enderror" required>
                             <option value="">-- Select Source --</option>
                             @foreach($branches as $branch)
-                                <option value="{{ $branch->id }}" {{ old('source_branch_id') == $branch->id ? 'selected' : '' }}>
+                                <option value="{{ $branch->id }}" data-branch-name="{{ $branch->name }}" {{ old('source_branch_id') == $branch->id ? 'selected' : '' }}>
                                     {{ $branch->name }}
                                 </option>
                             @endforeach
@@ -132,6 +132,9 @@
 <script>
     const stockInfoUrl  = "{{ route('stock-transfers.stock-info') }}";
 
+    // { product_id: { branch_id: quantity } } — used to show per-branch stock.
+    const stockMap = {!! $stockMap->toJson() !!};
+
     const productSelect  = document.getElementById('product_id');
     const branchSelect   = document.getElementById('source_branch_id');
     const targetSelect   = document.getElementById('target_branch_id'); // null for branch managers
@@ -143,6 +146,33 @@
     const infoEligibility= document.getElementById('info-eligibility-msg');
     const hintEl         = document.getElementById('transfer-limit-hint');
     const quantityInput  = document.getElementById('quantity');
+
+    // Update each source-branch option to show how many units of the selected
+    // product it holds, and disable branches that have none.
+    function updateBranchQuantities() {
+        const productId = productSelect.value;
+        const branchStocks = (productId && stockMap[productId]) ? stockMap[productId] : {};
+
+        Array.from(branchSelect.options).forEach(opt => {
+            if (!opt.value) return; // skip the placeholder
+            const name = opt.dataset.branchName || opt.textContent.trim();
+            const qty  = branchStocks[opt.value] ?? 0;
+
+            if (!productId) {
+                opt.textContent = name;
+                opt.disabled    = false;
+            } else {
+                opt.textContent = `${name} — ${qty} in stock`;
+                opt.disabled    = qty <= 0;
+            }
+        });
+
+        // If the currently selected source no longer has stock, clear it.
+        const selected = branchSelect.selectedOptions[0];
+        if (selected && selected.disabled) {
+            branchSelect.value = '';
+        }
+    }
 
     async function fetchStockInfo() {
         const productId = productSelect.value;
@@ -195,8 +225,14 @@
         }
     }
 
-    productSelect.addEventListener('change', fetchStockInfo);
+    productSelect.addEventListener('change', () => {
+        updateBranchQuantities();
+        fetchStockInfo();
+    });
     branchSelect.addEventListener('change',  fetchStockInfo);
+
+    // Reflect quantities on initial load (e.g. when the form is re-shown with old input).
+    updateBranchQuantities();
 
     // Also re-run when destination changes to keep source options in sync
     if (targetSelect) {

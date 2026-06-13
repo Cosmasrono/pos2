@@ -185,6 +185,7 @@
         .sidebar .nav-link.active .nav-icon,
         .sidebar .nav-link:hover .nav-icon { opacity: 1; }
 
+
         .nav-badge {
             margin-left: auto;
             font-size: 10px;
@@ -528,18 +529,32 @@
         ::-webkit-scrollbar-thumb { background: #6366f1; border-radius: 3px; }
 
         /* ══════════════════════════════
-           MOBILE
+           RESPONSIVE LAYOUT
         ══════════════════════════════ */
-        @media (max-width: 768px) {
+
+        /* Desktop: sidebar sticks full height */
+        @media (min-width: 992px) {
+            .sidebar {
+                position: sticky;
+                top: 0;
+                height: 100dvh;
+                min-height: 100dvh;
+            }
+            .mobile-bottom-nav { display: none !important; }
+        }
+
+        /* Tablet + Mobile: sidebar slides in, bottom nav appears */
+        @media (max-width: 991px) {
             .sidebar {
                 position: fixed;
-                left: -260px;
+                left: -270px;
                 top: 0;
                 bottom: 0;
+                height: 100%;
                 z-index: 1050;
-                transition: left var(--transition-base);
+                transition: left 0.25s ease;
+                width: 270px !important;
             }
-
             .sidebar.show { left: 0; }
 
             #sidebarOverlay {
@@ -550,21 +565,72 @@
                 z-index: 1049;
                 backdrop-filter: blur(2px);
             }
-
             #sidebarOverlay.show { display: block; }
 
-            .mobile-toggle {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                width: 38px;
-                height: 38px;
-                border-radius: 8px;
-                background: white;
-                border: 1px solid var(--border-color);
-                color: var(--text-main);
-                cursor: pointer;
-            }
+            /* Push content down so bottom nav doesn't overlap */
+            .main-content { padding-bottom: 80px; }
+
+            /* App wrapper takes full dynamic viewport height */
+            .app-wrapper { height: 100dvh; }
+        }
+
+        /* ── BOTTOM NAVIGATION ── */
+        .mobile-bottom-nav {
+            display: flex;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 2px solid var(--border-color);
+            z-index: 1000;
+            padding: 6px 0 max(6px, env(safe-area-inset-bottom));
+            box-shadow: 0 -4px 24px rgba(0,0,0,0.10);
+        }
+
+        .bottom-nav-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            padding: 6px 4px;
+            text-decoration: none;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: color var(--transition-fast);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .bottom-nav-item i { font-size: 20px; }
+
+        .bottom-nav-item.active,
+        .bottom-nav-item:hover { color: var(--primary); }
+
+        .bottom-nav-item.active i {
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Mobile toggle button (hamburger) */
+        .mobile-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            background: white;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            cursor: pointer;
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -574,12 +640,53 @@
             }
         }
     </style>
+
+    {{-- Offline POS: sync toast + pending badge --}}
+    <style>
+        .wingpos-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #fff;
+            border: 1px solid var(--border-color, #e5e7eb);
+            border-left: 4px solid var(--success, #16a34a);
+            border-radius: 12px;
+            padding: 14px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: var(--shadow-xl, 0 20px 40px rgba(0,0,0,.15));
+            z-index: 9999;
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 360px;
+        }
+        .wingpos-toast.show { transform: translateY(0); opacity: 1; }
+
+        .nav-pending-dot {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            background: var(--warning, #f59e0b);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 9px;
+            padding: 0 5px;
+            margin-left: auto;
+        }
+    </style>
     @stack('styles')
 </head>
 <body>
     <div id="sidebarOverlay"></div>
 
-    <div class="d-flex" style="height: 100vh;">
+    <div class="d-flex app-wrapper" style="height: 100dvh;">
 
         <!-- ══ SIDEBAR ══ -->
         <nav class="sidebar" id="sidebar" style="width: 260px;">
@@ -598,29 +705,14 @@
             {{-- Nav Links --}}
             <div class="nav-scroll">
 
-                <div class="nav-section-label">Main</div>
-
-                <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}"
-                       href="{{ route('dashboard') }}">
-                        <i class="bi bi-grid nav-icon"></i> Dashboard
-                    </a>
-                </div>
-
-                @if(auth()->check() && (auth()->user()->isSuperAdmin() || auth()->user()->isOwner()))
-                <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('superadmin.inventory') ? 'active' : '' }}"
-                       href="{{ route('superadmin.inventory') }}">
-                        <i class="bi bi-bar-chart-steps nav-icon"></i> Inventory Overview
-                    </a>
-                </div>
-                @endif
-
+                {{-- ── EVERYONE ── --}}
                 <div class="nav-item">
                     <a class="nav-link {{ request()->routeIs('sales.create') || request()->routeIs('sales.pos') ? 'active' : '' }}"
                        href="{{ route('sales.create') }}">
-                        <i class="bi bi-bag-check nav-icon"></i> Point of Sale
+                        <i class="bi bi-bag-check nav-icon"></i> Sell
                         <span class="nav-badge">POS</span>
+                        {{-- Pending offline sales counter --}}
+                        <span id="pendingSalesBadge" class="nav-pending-dot ms-1">0</span>
                     </a>
                 </div>
 
@@ -631,15 +723,58 @@
                     </a>
                 </div>
 
+                {{-- ── MANAGERS & ABOVE ── --}}
                 @if(auth()->user()->isSuperAdmin() || auth()->user()->isManager() || auth()->user()->isOwner())
 
                 <div class="nav-divider"></div>
-                <div class="nav-section-label">Inventory</div>
 
                 <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('products.*') ? 'active' : '' }}"
+                    <a class="nav-link {{ request()->routeIs('products.*') && !request()->routeIs('stock.*') && !request()->routeIs('categories.*') ? 'active' : '' }}"
                        href="{{ route('products.index') }}">
                         <i class="bi bi-box-seam nav-icon"></i> Products
+                    </a>
+                </div>
+
+                <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('stock.*') ? 'active' : '' }}"
+                       href="{{ route('stock.receive') }}">
+                        <i class="bi bi-box-arrow-in-down nav-icon"></i> Receive Delivery
+                    </a>
+                </div>
+
+                <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('expenses.*') || request()->routeIs('expense-categories.*') ? 'active' : '' }}"
+                       href="{{ route('expenses.index') }}">
+                        <i class="bi bi-cash-stack nav-icon"></i> Expenses
+                    </a>
+                </div>
+
+                <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('reports.*') ? 'active' : '' }}"
+                       href="{{ route('reports.sales') }}">
+                        <i class="bi bi-graph-up nav-icon"></i> Reports
+                    </a>
+                </div>
+
+                {{-- ── OWNERS & SUPERADMIN ── --}}
+                @if(auth()->user()->isOwner() || auth()->user()->isSuperAdmin())
+
+                <div class="nav-divider"></div>
+
+                <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('ai.*') ? 'active' : '' }}"
+                       href="{{ route('ai.dashboard') }}">
+                        <i class="bi bi-robot nav-icon"></i> AI Insights
+                    </a>
+                </div>
+
+                {{-- Settings — always visible --}}
+                <div class="nav-section-label mt-2">Settings</div>
+
+                <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}"
+                       href="{{ route('dashboard') }}">
+                        <i class="bi bi-speedometer2 nav-icon"></i> Dashboard
                     </a>
                 </div>
 
@@ -658,32 +793,6 @@
                 </div>
 
                 <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('promotions.*') ? 'active' : '' }}"
-                       href="{{ route('promotions.index') }}">
-                        <i class="bi bi-ticket-perforated nav-icon"></i> Promotions
-                    </a>
-                </div>
-
-                <div class="nav-divider"></div>
-                <div class="nav-section-label">Finance</div>
-
-                <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('expenses.*') || request()->routeIs('expense-categories.*') ? 'active' : '' }}"
-                       href="{{ route('expenses.index') }}">
-                        <i class="bi bi-cash-stack nav-icon"></i> Expenses
-                    </a>
-                </div>
-
-                @if(auth()->check() && (auth()->user()->isOwner() || auth()->user()->isSuperAdmin()))
-                <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('loans.*') ? 'active' : '' }}"
-                       href="{{ route('loans.index') }}">
-                        <i class="bi bi-credit-card nav-icon"></i> Loans
-                    </a>
-                </div>
-                @endif
-
-                <div class="nav-item">
                     <a class="nav-link {{ request()->routeIs('invoices.*') ? 'active' : '' }}"
                        href="{{ route('invoices.index') }}">
                         <i class="bi bi-file-earmark-text nav-icon"></i> Invoices
@@ -691,30 +800,18 @@
                 </div>
 
                 <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('reports.*') ? 'active' : '' }}"
-                       href="{{ route('reports.sales') }}">
-                        <i class="bi bi-graph-up nav-icon"></i> Reports
-                    </a>
-                </div>
-
-                <div class="nav-divider"></div>
-                <div class="nav-section-label">System</div>
-
-                @if(auth()->check() && (auth()->user()->isOwner() || auth()->user()->isSuperAdmin()))
-                <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('ai.*') ? 'active' : '' }}"
-                       href="{{ route('ai.dashboard') }}">
-                        <i class="bi bi-robot nav-icon"></i> AI Insights
+                    <a class="nav-link {{ request()->routeIs('loans.*') ? 'active' : '' }}"
+                       href="{{ route('loans.index') }}">
+                        <i class="bi bi-credit-card nav-icon"></i> Loans
                     </a>
                 </div>
 
                 <div class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('audit-logs.*') ? 'active' : '' }}"
-                       href="{{ route('audit-logs.index') }}">
-                        <i class="bi bi-shield-lock nav-icon"></i> Audit Trail
+                    <a class="nav-link {{ request()->routeIs('promotions.*') ? 'active' : '' }}"
+                       href="{{ route('promotions.index') }}">
+                        <i class="bi bi-ticket-perforated nav-icon"></i> Promotions
                     </a>
                 </div>
-                @endif
 
                 <div class="nav-item">
                     <a class="nav-link {{ request()->routeIs('branches.*') ? 'active' : '' }}"
@@ -730,7 +827,14 @@
                     </a>
                 </div>
 
-                @if(auth()->check() && auth()->user()->isOwner())
+                <div class="nav-item">
+                    <a class="nav-link {{ request()->routeIs('audit-logs.*') ? 'active' : '' }}"
+                       href="{{ route('audit-logs.index') }}">
+                        <i class="bi bi-shield-lock nav-icon"></i> Audit Trail
+                    </a>
+                </div>
+
+                @if(auth()->user()->isOwner())
                 <div class="nav-item">
                     <a class="nav-link {{ request()->routeIs('system.control') ? 'active' : '' }}"
                        href="{{ route('system.control') }}">
@@ -739,6 +843,7 @@
                 </div>
                 @endif
 
+                @endif
                 @endif
 
             </div>
@@ -772,19 +877,25 @@
         {{-- END SIDEBAR --}}
 
         <!-- ══ MAIN AREA ══ -->
-        <div style="flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden;">
+        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;">
 
             <!-- Top Navbar -->
             <nav class="navbar-top">
                 <div class="container-fluid px-4 py-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center gap-3">
-                            <button class="mobile-toggle d-md-none" id="sidebarToggle">
+                            <button class="mobile-toggle d-lg-none" id="sidebarToggle">
                                 <i class="bi bi-list fs-4"></i>
                             </button>
                             <h5 class="mb-0">@yield('page-title', 'Dashboard')</h5>
                         </div>
                         <div class="d-flex align-items-center gap-3">
+                            {{-- Pending offline sales — click to view --}}
+                            <span id="pendingTopBadge" class="badge bg-warning text-dark"
+                                  style="display:none; cursor:pointer;"
+                                  onclick="window.location='{{ route('offline') }}'">
+                                <i class="bi bi-clock-history"></i> 0 pending
+                            </span>
                             <div id="connectionStatus" class="badge bg-success">
                                 <i class="bi bi-wifi"></i> Online
                             </div>
@@ -799,30 +910,6 @@
             <!-- Page Content -->
             <div class="main-content">
 
-                @if ($errors->any())
-                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <strong>Please fix the following errors:</strong>
-                        @foreach ($errors->all() as $error)
-                            <div>{{ $error }}</div>
-                        @endforeach
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                @endif
-
-                @if (session('success'))
-                    <div class="alert alert-success alert-dismissible fade show" role="alert">
-                        <i class="bi bi-check-circle me-2"></i>{{ session('success') }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                @endif
-
-                @if (session('error'))
-                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <i class="bi bi-exclamation-circle me-2"></i>{{ session('error') }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                @endif
-
                 @yield('content')
 
                 <div class="px-2 py-3 mt-4 text-center border-top bg-white" style="border-radius: 12px;">
@@ -832,6 +919,95 @@
             </div>
         </div>
     </div>
+
+    {{-- ══ TOAST NOTIFICATIONS ══ --}}
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 9999;">
+
+        @if ($errors->any())
+        <div class="toast align-items-center text-bg-danger border-0 show" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <strong>Oops! Please fix:</strong>
+                    @foreach ($errors->all() as $error)
+                        <div class="small mt-1">• {{ $error }}</div>
+                    @endforeach
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        @endif
+
+        @if (session('success'))
+        <div class="toast align-items-center text-bg-success border-0 show" role="alert" data-bs-autohide="true" data-bs-delay="4000">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-check-circle-fill me-2"></i>{{ session('success') }}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        @endif
+
+        @if (session('error'))
+        <div class="toast align-items-center text-bg-danger border-0 show" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-x-circle-fill me-2"></i>{{ session('error') }}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        @endif
+
+        @if (session('warning'))
+        <div class="toast align-items-center text-bg-warning border-0 show" role="alert" data-bs-autohide="true" data-bs-delay="5000">
+            <div class="d-flex">
+                <div class="toast-body text-dark">
+                    <i class="bi bi-exclamation-circle-fill me-2"></i>{{ session('warning') }}
+                </div>
+                <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        @endif
+
+        @if (session('ai_shift_summary'))
+        <div class="toast align-items-center text-bg-info border-0 show" role="alert" data-bs-autohide="true" data-bs-delay="8000">
+            <div class="d-flex">
+                <div class="toast-body">
+                    🤖 <strong>AI Shift Summary:</strong> {{ session('ai_shift_summary') }}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+        @endif
+
+    </div>
+
+    {{-- ══ MOBILE BOTTOM NAV ══ --}}
+    <nav class="mobile-bottom-nav d-lg-none" role="navigation">
+        <a href="{{ route('sales.create') }}"
+           class="bottom-nav-item {{ request()->routeIs('sales.create', 'sales.pos') ? 'active' : '' }}">
+            <i class="bi bi-bag-check"></i><span>Sell</span>
+        </a>
+        <a href="{{ route('sales.index') }}"
+           class="bottom-nav-item {{ request()->routeIs('sales.index') ? 'active' : '' }}">
+            <i class="bi bi-receipt"></i><span>Sales</span>
+        </a>
+        @if(auth()->user()->isSuperAdmin() || auth()->user()->isManager() || auth()->user()->isOwner())
+        <a href="{{ route('products.index') }}"
+           class="bottom-nav-item {{ request()->routeIs('products.*') && !request()->routeIs('stock.*') ? 'active' : '' }}">
+            <i class="bi bi-box-seam"></i><span>Products</span>
+        </a>
+        <a href="{{ route('expenses.index') }}"
+           class="bottom-nav-item {{ request()->routeIs('expenses.*') ? 'active' : '' }}">
+            <i class="bi bi-cash-stack"></i><span>Expenses</span>
+        </a>
+        @endif
+        <button class="bottom-nav-item" id="sidebarToggleBottom">
+            <i class="bi bi-grid-3x3-gap"></i><span>Menu</span>
+        </button>
+    </nav>
 
     <script>
         window.addEventListener('online',  updateStatus);
@@ -854,25 +1030,53 @@
                     .then(() => console.log('SW Registered'))
                     .catch(err => console.log('SW Failed', err));
             });
+            // Note: offline-pos.js already replays queued sales on the 'online' event.
         }
 
         document.addEventListener('DOMContentLoaded', function () {
             updateStatus();
 
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            const toggle  = document.getElementById('sidebarToggle');
+            // Auto-init all toasts (Bootstrap 5)
+            document.querySelectorAll('.toast').forEach(el => {
+                const toast = new bootstrap.Toast(el);
+                toast.show();
+            });
 
-            function toggleSidebar() {
-                sidebar.classList.toggle('show');
-                overlay.classList.toggle('show');
-                document.body.style.overflow = sidebar.classList.contains('show') ? 'hidden' : '';
+            const sidebar       = document.getElementById('sidebar');
+            const overlay       = document.getElementById('sidebarOverlay');
+            const toggle        = document.getElementById('sidebarToggle');
+            const toggleBottom  = document.getElementById('sidebarToggleBottom');
+
+            function openSidebar() {
+                sidebar.classList.add('show');
+                overlay.classList.add('show');
+                document.body.style.overflow = 'hidden';
             }
 
-            if (toggle)  toggle.addEventListener('click', toggleSidebar);
-            if (overlay) overlay.addEventListener('click', toggleSidebar);
+            function closeSidebar() {
+                sidebar.classList.remove('show');
+                overlay.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+
+            function toggleSidebar() {
+                sidebar.classList.contains('show') ? closeSidebar() : openSidebar();
+            }
+
+            if (toggle)       toggle.addEventListener('click', toggleSidebar);
+            if (toggleBottom) toggleBottom.addEventListener('click', openSidebar);
+            if (overlay)      overlay.addEventListener('click', closeSidebar);
+
+            // Close sidebar on nav link click (mobile)
+            sidebar.querySelectorAll('a.nav-link').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (window.innerWidth < 992) closeSidebar();
+                });
+            });
         });
     </script>
+    {{-- Offline POS manager — must load before pushed page scripts use it --}}
+    <script src="/js/offline-pos.js"></script>
     @stack('scripts')
 </body>
 </html>

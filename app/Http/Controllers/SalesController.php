@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Customer;
 use App\Models\CartItem;
 use App\Models\Branch;
+use App\Services\AIInventoryService;
 use App\Services\SalesService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -216,6 +217,85 @@ class SalesController extends Controller
         }
     }
 
+    /**
+     * Handle POST /sales/sync from the service worker (or syncNow fallback).
+     * Replays a sale that was captured offline. Mirrors store() but reads a
+     * JSON body instead of form fields.
+     */
+    public function syncOffline(Request $request): JsonResponse
+    {
+        $data = $request->json()->all();
+
+        if (empty($data)) {
+            return response()->json(['success' => false, 'message' => 'No data received'], 422);
+        }
+
+        try {
+            // Resolve active shift for this cashier; fall back to their latest one.
+            $shift = Shift::where('status', 'open')
+                ->where('cashier_id', auth()->id())
+                ->first();
+
+            if (! $shift) {
+                $shift = Shift::where('cashier_id', auth()->id())->latest()->firstOrFail();
+            }
+
+            $items = $data['items'] ?? [];
+            if (empty($items)) {
+                return response()->json(['success' => false, 'message' => 'No items in sale'], 422);
+            }
+
+            $subtotal = collect($items)->sum(fn ($i) => ($i['quantity'] ?? 0) * ($i['price'] ?? 0));
+
+            $formattedItems = collect($items)->map(fn ($i) => [
+                'product_id'        => $i['id'],
+                'quantity'          => $i['quantity'],
+                'unit_price'        => $i['price'],
+                'line_total'        => ($i['quantity'] ?? 0) * ($i['price'] ?? 0),
+                'discount_per_item' => 0,
+            ])->toArray();
+
+            $method = $data['payment_method'] ?? 'cash';
+            $total  = (float) ($data['total_amount'] ?? 0);
+
+            $saleData = [
+                'cashier_id'             => auth()->id(),
+                'customer_id'            => $data['customer_id'] ?? null,
+                'status'                 => 'completed',
+                'subtotal'               => $subtotal,
+                'promotion_id'           => $data['promotion_id'] ?? null,
+                'tax_amount'             => (float) ($data['tax_amount'] ?? 0),
+                'discount_amount'        => (float) ($data['discount'] ?? 0),
+                'trade_in_amount'        => (float) ($data['trade_in_amount'] ?? 0),
+                'total_amount'           => $total,
+                'primary_payment_method' => $method,
+                'cash_paid'              => $method === 'cash'  ? $total : 0,
+                'mpesa_paid'             => $method === 'mpesa' ? $total : 0,
+                'card_paid'              => $method === 'card'  ? $total : 0,
+                'change_amount'          => (float) ($data['change_amount'] ?? 0),
+                'notes'                  => trim(($data['notes'] ?? '') . ' [OFFLINE SALE]'),
+                'shift_id'               => $shift->id,
+                'items'                  => $formattedItems,
+                'trade_ins'              => $data['trade_ins'] ?? [],
+            ];
+
+            $sale = $this->salesService->createSale($saleData);
+
+            return response()->json([
+                'success'        => true,
+                'receipt_number' => $sale->receipt_number,
+                'sale_id'        => $sale->id,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Offline sale sync failed', [
+                'cashier_id' => auth()->id(),
+                'error'      => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
+
     public function show(Sale $sale): View
     {
         // Ensure user can only view their own sale if they are a cashier
@@ -228,15 +308,21 @@ class SalesController extends Controller
         ]);
     }
 
-    public function receipt(Sale $sale)
+    public function upsellSuggestions(Request $request, AIInventoryService $ai): JsonResponse
     {
-        // Ensure user can only view their own sale if they are a cashier
+        $productIds = array_map('intval', (array) $request->input('product_ids', []));
+        return response()->json($ai->getUpsellSuggestions($productIds));
+    }
+
+    public function receipt(Sale $sale, AIInventoryService $ai)
+    {
         if (auth()->user()->isCashier() && !auth()->user()->isSuperAdmin() && !auth()->user()->isManager() && $sale->cashier_id != auth()->id()) {
             abort(404);
         }
 
-        return view('sales.receipt', [
-            'sale' => $sale->load(['items.product', 'cashier', 'customer']),
-        ]);
+        $sale->load(['items.product', 'cashier', 'customer']);
+        $thankYouMessage = $ai->generateReceiptThankYou($sale);
+
+        return view('sales.receipt', compact('sale', 'thankYouMessage'));
     }
 }

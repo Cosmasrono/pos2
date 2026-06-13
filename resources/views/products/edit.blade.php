@@ -30,8 +30,14 @@
                         </div>
                         <div class="col-md-6">
                             <label for="category_id" class="form-label">Category <span class="text-danger">*</span></label>
-                            <input type="text" id="category_id" name="category_id" class="form-control @error('category_id') is-invalid @enderror" 
-                                   value="{{ old('category_id', $product->category->name ?? '') }}" placeholder="Enter category name" required>
+                            <select id="category_id" name="category_id" class="form-select @error('category_id') is-invalid @enderror" required>
+                                <option value="">-- Select Category --</option>
+                                @foreach($categories as $category)
+                                    <option value="{{ $category->id }}" {{ old('category_id', $product->category_id) == $category->id ? 'selected' : '' }}>
+                                        {{ $category->name }}
+                                    </option>
+                                @endforeach
+                            </select>
                             @error('category_id')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror

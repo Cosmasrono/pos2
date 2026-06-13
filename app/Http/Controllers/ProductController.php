@@ -44,8 +44,9 @@ class ProductController extends Controller
 
     public function create(): View
     {
-        $branches = Branch::orderByDesc('is_main')->get();  
-        return view('products.create', ['branches' => $branches]);
+        $branches = Branch::orderByDesc('is_main')->get();
+        $categories = Category::orderBy('name')->get();
+        return view('products.create', ['branches' => $branches, 'categories' => $categories]);
     }
 
 public function store(Request $request): RedirectResponse
@@ -55,7 +56,7 @@ public function store(Request $request): RedirectResponse
         'sku'                     => 'nullable|unique:products|string|max:100',
         'barcode'                 => 'nullable|unique:products|string|max:100',
         'description'             => 'nullable|string',
-        'category_id'             => 'required|string|max:255',
+        'category_id'             => 'required|exists:categories,id',
         'cost_price'              => 'nullable|numeric|min:0',
         'selling_price'           => 'required|numeric|min:0',
         'reorder_level'           => 'required|integer|min:0',
@@ -64,8 +65,6 @@ public function store(Request $request): RedirectResponse
         'branch_quantities.*'     => 'nullable|integer|min:0',
     ]);
 
-    $category = Category::firstOrCreate(['name' => $validated['category_id']]);
-    $validated['category_id'] = $category->id;
     $validated['cost_price'] ??= 0;
 
     // Auto-generate SKU based on timestamp: ddmmyy-hhmmss-microseconds
@@ -126,8 +125,9 @@ public function store(Request $request): RedirectResponse
     public function edit(Product $product): View
     {
         $branches = Branch::all();
+        $categories = Category::orderBy('name')->get();
         $product->load('branchStocks');
-        return view('products.edit', ['product' => $product, 'branches' => $branches]);
+        return view('products.edit', ['product' => $product, 'branches' => $branches, 'categories' => $categories]);
     }
 
     public function update(Request $request, Product $product): RedirectResponse
@@ -137,7 +137,7 @@ public function store(Request $request): RedirectResponse
             'sku' => 'required|unique:products,sku,' . $product->id . '|string|max:100',
             'barcode' => 'nullable|unique:products,barcode,' . $product->id . '|string|max:100',
             'description' => 'nullable|string',
-            'category_id' => 'required|string|max:255',
+            'category_id' => 'required|exists:categories,id',
             'cost_price' => 'nullable|numeric|min:0',
             'selling_price' => 'required|numeric|min:0',
             'reorder_level' => 'required|integer|min:0',
@@ -145,9 +145,6 @@ public function store(Request $request): RedirectResponse
             'total_initial_stock' => 'required|integer|min:0',
         ]);
 
-        // Find or create category
-        $category = Category::firstOrCreate(['name' => $validated['category_id']]);
-        $validated['category_id'] = $category->id;
         $validated['cost_price'] ??= 0;
         $validated['quantity_in_stock'] = $validated['total_initial_stock'];
 
@@ -249,14 +246,75 @@ public function store(Request $request): RedirectResponse
             \App\Models\StockMovement::create([
                 'product_id' => $validated['product_id'],
                 'branch_id' => $validated['branch_id'],
-                'type' => 'in',
+                'type' => 'restock',
                 'quantity' => $validated['quantity'],
                 'notes' => ($validated['reference'] ?? 'Manual Stock Addition') . ' - Added by ' . auth()->user()->name,
                 'user_id' => auth()->id(),
             ]);
         }
 
-        return redirect()->route('products.show', $validated['product_id'])
-            ->with('success', "Added {$validated['quantity']} units to branch");
+        return redirect()->back()
+            ->with('success', "Added {$validated['quantity']} units to stock successfully.");
+    }
+
+    public function receiveDelivery(): View
+    {
+        $user = auth()->user();
+        $query = Product::with(['category', 'branchStocks'])->where('is_active', true)->orderBy('name');
+
+        $products = $query->get();
+        $branches = \App\Models\Branch::where('is_active', true)->get();
+
+        $defaultBranchId = $user->branch_id ?? optional(\App\Models\Branch::where('is_main', true)->first())->id;
+
+        return view('products.receive-delivery', compact('products', 'branches', 'defaultBranchId'));
+    }
+
+    public function processDelivery(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'branch_id'    => 'required|exists:branches,id',
+            'reference'    => 'nullable|string|max:255',
+            'quantities'   => 'required|array',
+            'quantities.*' => 'nullable|integer|min:0',
+        ]);
+
+        $branchId  = $request->branch_id;
+        $reference = $request->reference ?? 'Delivery received';
+        $userName  = auth()->user()->name;
+        $updated   = 0;
+
+        foreach ($request->quantities as $productId => $qty) {
+            if (!$qty || $qty <= 0) continue;
+
+            $product = Product::find($productId);
+            if (!$product) continue;
+
+            $stock = ProductBranchStock::firstOrCreate(
+                ['product_id' => $productId, 'branch_id' => $branchId],
+                ['quantity_in_stock' => 0, 'initial_allocation' => 0]
+            );
+            $stock->increment('quantity_in_stock', $qty);
+            $stock->increment('initial_allocation', $qty);
+
+            // Update master quantity
+            $product->quantity_in_stock = $product->branchStocks()->sum('quantity_in_stock');
+            $product->save();
+
+            if (class_exists('App\Models\StockMovement')) {
+                \App\Models\StockMovement::create([
+                    'product_id' => $productId,
+                    'branch_id'  => $branchId,
+                    'type'       => 'restock',
+                    'quantity'   => $qty,
+                    'notes'      => $reference . ' - Received by ' . $userName,
+                    'user_id'    => auth()->id(),
+                ]);
+            }
+            $updated++;
+        }
+
+        return redirect()->route('products.index')
+            ->with('success', "Delivery received: {$updated} product(s) restocked successfully.");
     }
 }

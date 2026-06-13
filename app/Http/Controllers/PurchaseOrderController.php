@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\PurchaseOrder;
+use App\Models\ProductBranchStock;
 use App\Models\Supplier;
+use App\Models\Branch;
 use App\Models\Product;
 use Illuminate\Http\Request;
 
@@ -95,13 +97,38 @@ class PurchaseOrderController extends Controller
             return back()->withErrors(['error' => 'Order already received.']);
         }
 
+        $user = auth()->user();
+        $branchId = $user->branch_id ?? optional(Branch::where('is_main', true)->first())->id ?? Branch::first()?->id;
+
         // Update inventory for each item
         foreach ($purchaseOrder->items as $item) {
             $product = $item->product;
-            $product->quantity_in_stock += $item->quantity_ordered;
+            $qty = $item->quantity_ordered;
+
+            // Update branch stock record
+            $branchStock = ProductBranchStock::firstOrCreate(
+                ['product_id' => $product->id, 'branch_id' => $branchId],
+                ['quantity_in_stock' => 0, 'initial_allocation' => 0]
+            );
+            $branchStock->increment('quantity_in_stock', $qty);
+            $branchStock->increment('initial_allocation', $qty);
+
+            // Keep the master quantity in sync
+            $product->quantity_in_stock = $product->branchStocks()->sum('quantity_in_stock');
             $product->save();
 
-            $item->update(['quantity_received' => $item->quantity_ordered]);
+            if (class_exists('App\Models\StockMovement')) {
+                \App\Models\StockMovement::create([
+                    'product_id' => $product->id,
+                    'branch_id'  => $branchId,
+                    'type'       => 'purchase',
+                    'quantity'   => $qty,
+                    'notes'      => 'PO ' . $purchaseOrder->po_number . ' received',
+                    'user_id'    => auth()->id(),
+                ]);
+            }
+
+            $item->update(['quantity_received' => $qty]);
         }
 
         $purchaseOrder->update([

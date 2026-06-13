@@ -11,6 +11,7 @@ use App\Models\Sale;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Illuminate\Http\RedirectResponse;
+use App\Services\AIInventoryService;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceController extends Controller
@@ -330,6 +331,13 @@ class InvoiceController extends Controller
     {
         // Redirect to create form with sale_id parameter
         return redirect()->route('invoices.create', ['sale_id' => $sale->id]);
+    }
+
+    public function paymentReminder(Invoice $invoice, AIInventoryService $ai)
+    {
+        $invoice->load('customer');
+        $message = $ai->generateInvoiceReminder($invoice);
+        return response()->json(['message' => $message]);
     }
 
     /**

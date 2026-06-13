@@ -2,67 +2,58 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Medicine;
+use App\Models\Category;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class CategoryController extends Controller
 {
-    /**
-     * GET /api/categories or /categories
-     * Returns all distinct medicine categories
-     */
     public function index()
     {
-        $categories = Medicine::select('category')
-            ->whereNotNull('category')
-            ->distinct()
-            ->orderBy('category')
-            ->pluck('category');
-
-        return response()->json([
-            'success'    => true,
-            'categories' => $categories,
-        ]);
+        $categories = Category::withCount('products')->latest()->paginate(15);
+        return view('categories.index', compact('categories'));
     }
 
-    /**
-     * GET /api/categories/{category}/medicines
-     * Returns medicines in a specific category
-     */
-    public function medicines(string $category)
+    public function create()
     {
-        $medicines = Medicine::where('category', $category)
-            ->where('stock', '>', 0)
-            ->orderBy('name')
-            ->get();
-
-        return response()->json([
-            'success'   => true,
-            'category'  => $category,
-            'medicines' => $medicines,
-        ]);
+        return view('categories.create');
     }
 
-    /**
-     * GET /api/categories/stats
-     * Returns categories with counts and stock totals
-     */
-    public function stats()
+    public function store(Request $request)
     {
-        $stats = Medicine::select(
-                'category',
-                DB::raw('count(*) as total_products'),
-                DB::raw('sum(stock) as total_stock')
-            )
-            ->whereNotNull('category')
-            ->groupBy('category')
-            ->orderBy('category')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'stats'   => $stats,
+        $request->validate([
+            'name'        => ['required', 'string', 'max:255', 'unique:categories'],
+            'description' => ['nullable', 'string'],
         ]);
+
+        Category::create($request->only('name', 'description'));
+
+        return redirect()->route('categories.index')->with('success', 'Category created successfully.');
+    }
+
+    public function edit(Category $category)
+    {
+        return view('categories.edit', compact('category'));
+    }
+
+    public function update(Request $request, Category $category)
+    {
+        $request->validate([
+            'name'        => ['required', 'string', 'max:255', 'unique:categories,name,' . $category->id],
+            'description' => ['nullable', 'string'],
+        ]);
+
+        $category->update($request->only('name', 'description'));
+
+        return redirect()->route('categories.index')->with('success', 'Category updated successfully.');
+    }
+
+    public function destroy(Category $category)
+    {
+        if ($category->products()->count() > 0) {
+            return back()->withErrors(['error' => 'Cannot delete a category that has products assigned to it.']);
+        }
+
+        $category->delete();
+        return redirect()->route('categories.index')->with('success', 'Category deleted successfully.');
     }
 }

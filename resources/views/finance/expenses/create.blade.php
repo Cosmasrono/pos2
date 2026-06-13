@@ -18,11 +18,19 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">Category</label>
-                                <input type="text" name="category_name" class="form-control @error('category_name') is-invalid @enderror" 
-                                       value="{{ old('category_name') }}" required placeholder="Enter category">
+                                <div class="input-group">
+                                    <input type="text" name="category_name" id="category_name"
+                                           class="form-control @error('category_name') is-invalid @enderror"
+                                           value="{{ old('category_name') }}" required placeholder="Enter category">
+                                    <button type="button" class="btn btn-outline-secondary" id="suggestCategoryBtn" title="AI Suggest">
+                                        <span id="suggestBtnText">🤖 AI Suggest</span>
+                                        <span id="suggestBtnSpinner" class="spinner-border spinner-border-sm d-none"></span>
+                                    </button>
+                                </div>
                                 @error('category_name')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
+                                <small id="categoryHint" class="text-success d-none"></small>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Amount (KES)</label>
@@ -86,3 +94,48 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.getElementById('suggestCategoryBtn').addEventListener('click', async function () {
+    const description = document.querySelector('textarea[name="description"]').value.trim();
+    const amount      = document.querySelector('input[name="amount"]').value;
+
+    if (!description) {
+        alert('Please enter a description first.');
+        return;
+    }
+
+    const btnText    = document.getElementById('suggestBtnText');
+    const spinner    = document.getElementById('suggestBtnSpinner');
+    const hint       = document.getElementById('categoryHint');
+    const catInput   = document.getElementById('category_name');
+
+    btnText.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    this.disabled = true;
+
+    try {
+        const res  = await fetch('{{ route("expenses.suggest-category") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({ description, amount })
+        });
+        const data = await res.json();
+        catInput.value = data.category;
+        hint.textContent = 'Claude suggested: ' + data.category;
+        hint.classList.remove('d-none');
+    } catch (e) {
+        alert('Could not get AI suggestion. Please enter manually.');
+    } finally {
+        btnText.classList.remove('d-none');
+        spinner.classList.add('d-none');
+        this.disabled = false;
+    }
+});
+</script>
+@endpush

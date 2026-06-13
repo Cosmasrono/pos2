@@ -35,7 +35,16 @@ class StockTransferController extends Controller
     $allBranches = Branch::where('is_active', true)->get();
     $products    = Product::where('is_active', true)->get();
 
-    return view('transfers.create', compact('branches', 'products', 'allBranches', 'user'));
+    // Map of product_id => { branch_id => quantity_in_stock } so the UI can show
+    // which branch holds each product and how many units are available.
+    $stockMap = ProductBranchStock::select('product_id', 'branch_id', 'quantity_in_stock')
+        ->get()
+        ->groupBy('product_id')
+        ->map(function ($rows) {
+            return $rows->mapWithKeys(fn ($r) => [$r->branch_id => (int) $r->quantity_in_stock]);
+        });
+
+    return view('transfers.create', compact('branches', 'products', 'allBranches', 'user', 'stockMap'));
 }
 
 

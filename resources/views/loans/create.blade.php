@@ -42,6 +42,32 @@
                             </div>
                         </div>
 
+                        <!-- AI Loan Risk Assessment -->
+                        <div id="loanRiskWidget" class="d-none mb-3">
+                            <div class="card border-0 bg-light">
+                                <div class="card-body py-3">
+                                    <div id="loanRiskLoading" class="d-none text-center py-2">
+                                        <span class="spinner-border spinner-border-sm text-primary me-2"></span>
+                                        <span class="text-muted small">Claude is assessing loan risk...</span>
+                                    </div>
+                                    <div id="loanRiskResult" class="d-none">
+                                        <div class="d-flex align-items-center gap-3">
+                                            <span style="font-size:1.5rem;">🤖</span>
+                                            <div>
+                                                <div class="fw-bold small mb-1">AI Risk Assessment</div>
+                                                <div class="d-flex align-items-center gap-2 mb-1">
+                                                    <span id="riskBadge" class="badge"></span>
+                                                    <span class="small text-muted">Score: <strong id="riskScore"></strong>/100</span>
+                                                </div>
+                                                <p class="mb-1 small" id="riskReason"></p>
+                                                <div class="small fw-bold" id="riskRecommendation"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label for="product_description" class="form-label">Product/Service Description *</label>
                             <textarea name="product_description" id="product_description" rows="3" 
@@ -148,4 +174,60 @@
         </div>
     </div>
 </div>
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const customerSel = document.getElementById('customer_id');
+    const amountInput = document.getElementById('total_amount');
+    const widget = document.getElementById('loanRiskWidget');
+    const loading = document.getElementById('loanRiskLoading');
+    const result = document.getElementById('loanRiskResult');
+    let debounceTimer = null;
+
+    function checkAndAssess() {
+        const customerId = customerSel.value;
+        const amount = parseFloat(amountInput.value);
+        if (!customerId || !amount || amount <= 0) { widget.classList.add('d-none'); return; }
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+            widget.classList.remove('d-none');
+            loading.classList.remove('d-none');
+            result.classList.add('d-none');
+
+            try {
+                const res = await fetch('{{ route("ai.loan-risk") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ customer_id: customerId, amount: amount })
+                });
+                const data = await res.json();
+                if (data.risk) {
+                    const badge = document.getElementById('riskBadge');
+                    badge.textContent = data.risk.toUpperCase();
+                    badge.className = 'badge ' + (data.risk === 'low' ? 'bg-success' : data.risk === 'medium' ? 'bg-warning text-dark' : 'bg-danger');
+                    document.getElementById('riskScore').textContent = data.score ?? '—';
+                    document.getElementById('riskReason').textContent = data.reason ?? '';
+                    const rec = document.getElementById('riskRecommendation');
+                    rec.textContent = data.recommendation ? '→ ' + data.recommendation.charAt(0).toUpperCase() + data.recommendation.slice(1) : '';
+                    rec.className = 'small fw-bold ' + (data.recommendation === 'approve' ? 'text-success' : data.recommendation === 'reject' ? 'text-danger' : 'text-warning');
+                    loading.classList.add('d-none');
+                    result.classList.remove('d-none');
+                }
+            } catch (e) {
+                loading.classList.add('d-none');
+                widget.classList.add('d-none');
+            }
+        }, 800);
+    }
+
+    customerSel.addEventListener('change', checkAndAssess);
+    amountInput.addEventListener('input', checkAndAssess);
+});
+</script>
+@endpush
 @endsection

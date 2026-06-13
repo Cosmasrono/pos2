@@ -5,6 +5,11 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Invoice {{ $invoice->invoice_number }}</h2>
         <div>
+            @if(in_array($invoice->status, ['sent','overdue']) && $invoice->balance_due > 0)
+            <button type="button" class="btn btn-warning" id="reminderBtn" data-id="{{ $invoice->id }}">
+                🤖 Get Payment Reminder
+            </button>
+            @endif
             <a href="{{ route('invoices.print', $invoice) }}" class="btn btn-info" target="_blank">
                 <i class="bi bi-printer"></i> Print
             </a>
@@ -316,4 +321,96 @@
         </div>
     </div>
 </div>
+
+<!-- AI Payment Reminder Modal -->
+<div class="modal fade" id="reminderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">🤖 AI Payment Reminder</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="reminderLoading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2 text-muted">Claude is drafting a reminder...</p>
+                </div>
+                <div id="reminderContent" class="d-none">
+                    <div class="alert alert-info mb-3" id="reminderText"></div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" id="copyReminderBtn">
+                            <i class="bi bi-clipboard me-1"></i> Copy
+                        </button>
+                        @if($invoice->customer->phone)
+                        <a id="whatsappReminderBtn" href="#" target="_blank" class="btn btn-sm btn-success">
+                            <i class="bi bi-whatsapp me-1"></i> Send on WhatsApp
+                        </a>
+                        @endif
+                    </div>
+                </div>
+                <div id="reminderError" class="d-none">
+                    <div class="alert alert-danger">Failed to generate reminder. Please try again.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const btn = document.getElementById('reminderBtn');
+    if (!btn) return;
+
+    const modal = new bootstrap.Modal(document.getElementById('reminderModal'));
+    const loading = document.getElementById('reminderLoading');
+    const content = document.getElementById('reminderContent');
+    const error = document.getElementById('reminderError');
+    const reminderText = document.getElementById('reminderText');
+    const copyBtn = document.getElementById('copyReminderBtn');
+    const waBtn = document.getElementById('whatsappReminderBtn');
+
+    btn.addEventListener('click', async function () {
+        loading.classList.remove('d-none');
+        content.classList.add('d-none');
+        error.classList.add('d-none');
+        modal.show();
+
+        try {
+            const res = await fetch('{{ route("invoices.payment-reminder", $invoice) }}', {
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }
+            });
+            const data = await res.json();
+            if (data.message) {
+                reminderText.textContent = data.message;
+                loading.classList.add('d-none');
+                content.classList.remove('d-none');
+
+                if (waBtn) {
+                    const phone = '{{ preg_replace("/[^0-9]/", "", $invoice->customer->phone ?? "") }}';
+                    waBtn.href = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(data.message);
+                }
+            } else {
+                throw new Error('No message');
+            }
+        } catch (e) {
+            loading.classList.add('d-none');
+            error.classList.remove('d-none');
+        }
+    });
+
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+            navigator.clipboard.writeText(reminderText.textContent);
+            copyBtn.innerHTML = '<i class="bi bi-check me-1"></i> Copied!';
+            setTimeout(() => { copyBtn.innerHTML = '<i class="bi bi-clipboard me-1"></i> Copy'; }, 2000);
+        });
+    }
+});
+</script>
+@endpush
+
 @endsection

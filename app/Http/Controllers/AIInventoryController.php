@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\PredictionLog;
 use App\Services\AIInventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class AIInventoryController extends Controller
@@ -69,7 +69,7 @@ class AIInventoryController extends Controller
             'wasteRisks'             => $wasteRisks,
             'bundleSuggestions'      => $this->aiService->suggestProductBundles(),
             'dailyBriefing'          => $this->aiService->getDailyExecutiveBriefing(),
-            'globalAIInsight'        => $this->aiService->getGroqInsight($globalPrompt, 150),
+            'globalAIInsight'        => $this->aiService->getClaudeInsight($globalPrompt, 150),
         ]);
     }
 
@@ -142,6 +142,92 @@ class AIInventoryController extends Controller
         $aiInsight  = $this->aiService->getBranchSalesAIInsight($analysis);
 
         return view('ai.branch-sales', compact('analysis', 'aiInsight'));
+    }
+
+    public function smartPurchaseOrder()
+    {
+        $data = $this->aiService->draftSmartPurchaseOrder();
+        return view('ai.smart-purchase-order', $data);
+    }
+
+    public function customerChurn()
+    {
+        $customers = $this->aiService->getChurnedCustomers(30);
+        return view('ai.customer-churn', compact('customers'));
+    }
+
+    public function financialHealth()
+    {
+        $data = $this->aiService->getFinancialHealthScore();
+        return view('ai.financial-health', $data);
+    }
+
+    public function promotionSuggestions()
+    {
+        $data = $this->aiService->suggestPromotion();
+        return view('ai.promotion-suggestions', $data);
+    }
+
+    public function staffPerformance()
+    {
+        $data = $this->aiService->getStaffPerformanceReport();
+        return view('ai.staff-performance', $data);
+    }
+
+    public function seasonalForecast()
+    {
+        $data = $this->aiService->getSeasonalForecast();
+        return view('ai.seasonal-forecast', $data);
+    }
+
+    public function loanRiskAssessment(Request $request)
+    {
+        $request->validate(['customer_id' => 'required|exists:customers,id', 'amount' => 'required|numeric|min:1']);
+        return response()->json($this->aiService->assessLoanRisk((int) $request->customer_id, (float) $request->amount));
+    }
+
+    public function productSetupHelper(Request $request)
+    {
+        $request->validate(['name' => 'required|string', 'category' => 'required|string']);
+        return response()->json($this->aiService->suggestProductSetup($request->name, $request->category));
+    }
+
+    public function lossPreventionAlerts()
+    {
+        $data = $this->aiService->getLossPreventionAlerts();
+        return view('ai.loss-prevention', $data);
+    }
+
+    public function predictionAccuracy()
+    {
+        $logs = PredictionLog::whereNotNull('accuracy_score')
+            ->where('prediction_type', 'demand_forecast')
+            ->orderByDesc('prediction_date')
+            ->limit(200)
+            ->get();
+
+        $overall   = $logs->avg('accuracy_score') ?? 0;
+        $last30    = $logs->where('prediction_date', '>=', now()->subDays(30)->toDateString())->avg('accuracy_score') ?? 0;
+        $hitTarget = $logs->where('accuracy_score', '>=', 80)->count();
+        $total     = $logs->count();
+
+        // Worst performers — products where predictions are consistently off
+        $byProduct = $logs->groupBy('product_id')->map(fn($g) => [
+            'product_id'   => $g->first()->product_id,
+            'product_name' => $g->first()->product?->name ?? 'Unknown',
+            'avg_accuracy' => round($g->avg('accuracy_score'), 1),
+            'count'        => $g->count(),
+        ])->sortBy('avg_accuracy')->take(10)->values();
+
+        return response()->json([
+            'overall_accuracy'  => round($overall, 1),
+            'last_30d_accuracy' => round($last30, 1),
+            'target_hit_rate'   => $total > 0 ? round(($hitTarget / $total) * 100, 1) : 0,
+            'total_evaluated'   => $total,
+            'target'            => 80,
+            'on_track'          => $last30 >= 80,
+            'worst_products'    => $byProduct,
+        ]);
     }
 
     public function executeRecommendation(Request $request)

@@ -61,22 +61,41 @@
                                     </div>
 
                                     <div class="col-md-5">
-                                        <label for="category_id" class="form-label">Category <span class="text-danger">*</span></label>
+                                        <label for="category_id" class="form-label">
+                                            Category <span class="text-danger">*</span>
+                                        </label>
                                         <div class="input-group">
-                                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-grid text-muted"></i></span>
-                                            <input type="text" id="category_id" name="category_id" class="form-control border-start-0 @error('category_id') is-invalid @enderror" 
-                                                   value="{{ old('category_id') }}" placeholder="Category name" required>
+                                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-tags text-muted"></i></span>
+                                            <select id="category_id" name="category_id" class="form-select border-start-0 @error('category_id') is-invalid @enderror" required>
+                                                <option value="">-- Choose a category --</option>
+                                                @foreach($categories as $category)
+                                                    <option value="{{ $category->id }}" {{ old('category_id') == $category->id ? 'selected' : '' }}>
+                                                        {{ $category->name }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
                                             @error('category_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
                                         </div>
+                                        @if($categories->isEmpty())
+                                            <div class="form-text text-warning">
+                                                <i class="bi bi-exclamation-triangle me-1"></i>
+                                                No categories yet. <a href="{{ route('categories.create') }}" target="_blank">Create one first</a>.
+                                            </div>
+                                        @else
+                                            <div class="form-text">
+                                                Can't find your category? <a href="{{ route('categories.create') }}" target="_blank">Add a new one</a>.
+                                            </div>
+                                        @endif
                                     </div>
 
                                     <div class="col-md-6">
-                                        <label for="sku" class="form-label">SKU (System Generated)</label>
+                                        <label for="sku" class="form-label">Product Code <span class="text-muted fw-normal small">(auto-generated)</span></label>
                                         <div class="input-group">
                                             <span class="input-group-text bg-light border-end-0"><i class="bi bi-robot text-muted"></i></span>
-                                           <input type="text" id="sku" name="sku" class="form-control border-start-0 border-end-0 bg-light fw-bold text-primary" 
-       value="" placeholder="e.g. 130326-142507-384921" readonly>
+                                           <input type="text" id="sku" name="sku" class="form-control border-start-0 border-end-0 bg-light fw-bold text-primary"
+       value="" placeholder="Will be created automatically" readonly>
                                         </div>
+                                        <div class="form-text">The system will assign a unique code for this product.</div>
                                     </div>
 
                                     <div class="col-md-6">
@@ -89,8 +108,17 @@
                                     </div>
 
                                     <div class="col-12">
+                                        <button type="button" id="aiAssistBtn" class="btn btn-outline-primary btn-sm">
+                                            🤖 AI Assist — Suggest Price, Cost & Details
+                                        </button>
+                                        <div id="aiAssistLoading" class="d-none mt-2 text-muted small">
+                                            <span class="spinner-border spinner-border-sm me-1"></span> Claude is thinking...
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12">
                                         <label for="description" class="form-label">Description</label>
-                                        <textarea name="description" rows="3" class="form-control" placeholder="Optional product description...">{{ old('description') }}</textarea>
+                                        <textarea id="description" name="description" rows="3" class="form-control" placeholder="Optional product description...">{{ old('description') }}</textarea>
                                     </div>
                                 </div>
                             </div>
@@ -139,13 +167,15 @@
                                 </h6>
                             </div>
                             <div class="card-body p-4">
-                                <label for="reorder_level" class="form-label">Reorder Level *</label>
+                                <label for="reorder_level" class="form-label fw-bold">
+                                    <i class="bi bi-bell text-warning me-1"></i>Low Stock Warning Level <span class="text-danger">*</span>
+                                </label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-light"><i class="bi bi-bell text-warning"></i></span>
-                                    <input type="number" id="reorder_level" name="reorder_level" class="form-control" 
+                                    <input type="number" id="reorder_level" name="reorder_level" class="form-control"
                                            value="{{ old('reorder_level', 10) }}" required min="0">
                                 </div>
-                                <small class="text-muted mt-1 d-block">Alert me when stock falls below this.</small>
+                                <div class="form-text">When the stock quantity drops to this number, you will see a <span class="badge bg-warning text-dark">Low Stock</span> warning. Default is 10.</div>
                             </div>
                         </div>
 
@@ -339,6 +369,63 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Final check on load
         setTimeout(updateAllocations, 100);
+    }
+
+    // AI Product Setup Helper
+    const aiBtn = document.getElementById('aiAssistBtn');
+    if (aiBtn) {
+        aiBtn.addEventListener('click', async function () {
+            const productName = document.getElementById('name').value.trim();
+            const categoryEl = document.getElementById('category_id');
+            const categoryName = categoryEl.options[categoryEl.selectedIndex]?.text ?? '';
+
+            if (!productName || !categoryEl.value) {
+                alert('Please enter the product name and select a category first.');
+                return;
+            }
+
+            const loadingEl = document.getElementById('aiAssistLoading');
+            aiBtn.disabled = true;
+            loadingEl.classList.remove('d-none');
+
+            try {
+                const res = await fetch('{{ route("ai.product-setup") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ name: productName, category: categoryName })
+                });
+                const data = await res.json();
+                if (data.selling_price) {
+                    const sellingPriceInput = document.getElementById('selling_price');
+                    const costPriceInput = document.getElementById('cost_price');
+                    const reorderInput = document.getElementById('reorder_level');
+                    const descInput = document.getElementById('description');
+
+                    if (sellingPriceInput && data.selling_price) sellingPriceInput.value = data.selling_price;
+                    if (costPriceInput && data.cost_price) costPriceInput.value = data.cost_price;
+                    if (reorderInput && data.reorder_level) reorderInput.value = data.reorder_level;
+                    if (descInput && data.description && !descInput.value) descInput.value = data.description;
+
+                    aiBtn.innerHTML = '✅ AI Suggestions Applied';
+                    aiBtn.classList.replace('btn-outline-primary', 'btn-success');
+                    setTimeout(() => {
+                        aiBtn.innerHTML = '🤖 AI Assist — Suggest Price, Cost & Details';
+                        aiBtn.classList.replace('btn-success', 'btn-outline-primary');
+                        aiBtn.disabled = false;
+                    }, 3000);
+                } else {
+                    aiBtn.disabled = false;
+                }
+            } catch (e) {
+                aiBtn.disabled = false;
+            } finally {
+                loadingEl.classList.add('d-none');
+            }
+        });
     }
 });
 </script>

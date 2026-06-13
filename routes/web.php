@@ -38,6 +38,8 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('products', ProductController::class);
     Route::resource('stock-transfers', StockTransferController::class);
     Route::post('products/add-stock', [ProductController::class, 'addStock'])->name('stock.add');
+    Route::get('stock/receive', [ProductController::class, 'receiveDelivery'])->name('stock.receive');
+    Route::post('stock/receive', [ProductController::class, 'processDelivery'])->name('stock.receive.process');
     Route::post('products/{product}/batch-transfer', [ProductController::class, 'batchTransfer'])->name('products.batch-transfer');
     Route::resource('categories', CategoryController::class);
     Route::resource('suppliers', SupplierController::class);
@@ -53,6 +55,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('pos/search', [SalesController::class, 'searchProduct'])->name('pos.search');
     Route::get('sales/create', [SalesController::class, 'create'])->name('sales.create');
     Route::post('sales', [SalesController::class, 'store'])->name('sales.store');
+    // Offline POS: service worker / fallback sync endpoint + offline fallback page
+    Route::post('sales/sync', [SalesController::class, 'syncOffline'])->name('sales.sync');
+    Route::view('offline', 'sales.offline')->name('offline');
     Route::get('sales', [SalesController::class, 'index'])->name('sales.index');
     Route::get('sales/{sale}', [SalesController::class, 'show'])->name('sales.show');
     Route::get('sales/{sale}/receipt', [SalesController::class, 'receipt'])->name('sales.receipt');
@@ -94,6 +99,19 @@ Route::middleware(['auth'])->group(function () {
     
     // AI API Endpoints
     Route::post('api/ai/execute-recommendation', [\App\Http\Controllers\AIInventoryController::class, 'executeRecommendation'])->name('ai.execute');
+    Route::get('ai/loss-prevention',       [\App\Http\Controllers\AIInventoryController::class, 'lossPreventionAlerts'])->name('ai.loss-prevention');
+    Route::get('ai/smart-purchase-order',  [\App\Http\Controllers\AIInventoryController::class, 'smartPurchaseOrder'])->name('ai.smart-purchase-order');
+    Route::get('ai/customer-churn',        [\App\Http\Controllers\AIInventoryController::class, 'customerChurn'])->name('ai.customer-churn');
+    Route::get('ai/financial-health',      [\App\Http\Controllers\AIInventoryController::class, 'financialHealth'])->name('ai.financial-health');
+    Route::get('ai/promotions',            [\App\Http\Controllers\AIInventoryController::class, 'promotionSuggestions'])->name('ai.promotions');
+    Route::get('ai/staff-performance',     [\App\Http\Controllers\AIInventoryController::class, 'staffPerformance'])->name('ai.staff-performance');
+    Route::get('ai/seasonal-forecast',     [\App\Http\Controllers\AIInventoryController::class, 'seasonalForecast'])->name('ai.seasonal-forecast');
+    Route::get('ai/prediction-accuracy',  [\App\Http\Controllers\AIInventoryController::class, 'predictionAccuracy'])->name('ai.prediction-accuracy');
+    Route::get('api/sales/upsell',         [\App\Http\Controllers\SalesController::class, 'upsellSuggestions'])->name('sales.upsell');
+    Route::post('api/expenses/suggest-category', [\App\Http\Controllers\ExpenseController::class, 'suggestCategory'])->name('expenses.suggest-category');
+    Route::post('api/ai/loan-risk',        [\App\Http\Controllers\AIInventoryController::class, 'loanRiskAssessment'])->name('ai.loan-risk');
+    Route::post('api/ai/product-setup',    [\App\Http\Controllers\AIInventoryController::class, 'productSetupHelper'])->name('ai.product-setup');
+    Route::get('invoices/{invoice}/payment-reminder', [\App\Http\Controllers\InvoiceController::class, 'paymentReminder'])->name('invoices.payment-reminder');
 
     Route::get('reports/sales', [\App\Http\Controllers\ReportController::class, 'sales'])->name('reports.sales');
     Route::get('reports/pnl', [\App\Http\Controllers\ReportController::class, 'profitLoss'])->name('reports.pnl');
