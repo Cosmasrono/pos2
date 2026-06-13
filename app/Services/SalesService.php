@@ -103,7 +103,7 @@ class SalesService
             StockMovement::create([
                 'product_id' => $item['product_id'],
                 'branch_id' => $branchId,
-                'type' => 'sale',
+                'type'       => 'out', 
                 'quantity' => -$item['quantity'],
                 'notes' => "Sale #{$sale->receipt_number}",
                 'user_id' => $data['cashier_id'],
@@ -141,7 +141,7 @@ class SalesService
                 // Record stock movement for the new product
                 StockMovement::create([
                     'product_id' => $tradeInProduct->id,
-                    'type' => 'purchase', // Trating as a purchase for inventory purposes
+                    'type'       => 'out', // Trating as a purchase for inventory purposes
                     'quantity' => 1,
                     'notes' => "Trade-in from Sale #{$sale->receipt_number}",
                     'user_id' => $data['cashier_id'],
@@ -162,7 +162,7 @@ class SalesService
         return $sale;
     }
 
-    public function refundSale(Sale $sale, array $refundData): void
+     public function refundSale(Sale $sale, array $refundData): void
     {
         $sale->update(['status' => 'refunded']);
 
@@ -175,13 +175,16 @@ class SalesService
             // Record stock movement
             StockMovement::create([
                 'product_id' => $item['product_id'],
-                'type' => 'return',
+                // 'type' => 'return',
+                    'type'  => 'out',        // was 'sale'
+
                 'quantity' => $item['quantity'],
                 'notes' => "Refund for Sale #{$sale->receipt_number}",
                 'user_id' => auth()->id(),
             ]);
         }
     }
+
 
     public function processMpesaPayment(MpesaPayment $payment, string $transactionCode): void
     {
